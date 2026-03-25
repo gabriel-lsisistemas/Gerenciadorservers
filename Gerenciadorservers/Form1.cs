@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
+using System.IO;
 using System.Windows.Forms;
 
 namespace Gerenciadorservers
@@ -11,12 +11,11 @@ namespace Gerenciadorservers
         {
             InitializeComponent();
             ConfigurarTimer();
-            CheckExecutablesOnStartup();
         }
 
         private void ConfigurarTimer()
         {
-            timer1.Interval = 60000; // 1 minuto
+            timer1.Interval = 60000;
             timer1.Tick += Timer_Tick;
             timer1.Start();
         }
@@ -27,121 +26,150 @@ namespace Gerenciadorservers
 
             if ((now.Hour == 8 || now.Hour == 0) && now.Minute == 0)
             {
-                RestartAllExecutables();
+                RestartAll();
             }
         }
 
-        // ===============================
-        // VERIFICAÇÃO AO INICIAR
-        // ===============================
-        private void CheckExecutablesOnStartup()
+        // =============================
+        // SELECIONAR EXE
+        // =============================
+
+        private void SelecionarExe(TextBox txt)
         {
-            string basePath = Application.StartupPath;
+            OpenFileDialog of = new OpenFileDialog();
+            of.Filter = "Exe (*.exe)|*.exe";
 
-            CheckAndStart("IntegradorCreditos",
-                System.IO.Path.Combine(basePath, "IntegradorCreditos.lnk"));
-
-            CheckAndStart("IntegradorRM",
-                System.IO.Path.Combine(basePath, "IntegradorRM.lnk"));
-
-            CheckAndStart("ApiLocalSeculos",
-                System.IO.Path.Combine(basePath, "Api Local Seculos.exe"));
+            if (of.ShowDialog() == DialogResult.OK)
+            {
+                txt.Text = of.FileName;
+            }
         }
 
-        private void CheckAndStart(string processName, string fullPath)
+        private void btnExe1_Click(object sender, EventArgs e)
         {
+            SelecionarExe(txtExe1);
+        }
+
+        private void btnExe2_Click(object sender, EventArgs e)
+        {
+            SelecionarExe(txtExe2);
+        }
+
+        private void btnExe3_Click(object sender, EventArgs e)
+        {
+            SelecionarExe(txtExe3);
+        }
+
+        // =============================
+        // VERIFICAR AO INICIAR
+        // =============================
+
+        private void CheckStart(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            if (!File.Exists(path))
+            {
+                Log($"Arquivo não encontrado: {path}");
+                return;
+            }
+
+            string processName = Path.GetFileNameWithoutExtension(path);
+
+            var proc = Process.GetProcessesByName(processName);
+
+            if (proc.Length == 0)
+            {
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = path;
+                psi.WorkingDirectory = Path.GetDirectoryName(path);
+                psi.UseShellExecute = true;
+
+                Process.Start(psi);
+
+                Log($"{processName} iniciado");
+            }
+        }
+
+        private void CheckAll()
+        {
+            CheckStart(txtExe1.Text);
+            CheckStart(txtExe2.Text);
+            CheckStart(txtExe3.Text);
+        }
+
+        // =============================
+        // REINICIAR
+        // =============================
+
+        private void RestartExe(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            if (!File.Exists(path))
+            {
+                Log($"Não existe: {path}");
+                return;
+            }
+
+            string processName = Path.GetFileNameWithoutExtension(path);
+
             var processes = Process.GetProcessesByName(processName);
 
-            if (processes.Length == 0)
+            foreach (var p in processes)
             {
                 try
                 {
-                    if (!System.IO.File.Exists(fullPath))
-                    {
-                        LogMessage($"Arquivo não encontrado: {fullPath}");
-                        return;
-                    }
-
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = fullPath,
-                        UseShellExecute = true
-                    });
-
-                    LogMessage($"{processName} iniciado com sucesso.");
+                    p.Kill();
+                    p.WaitForExit();
                 }
-                catch (Exception ex)
-                {
-                    LogMessage($"Erro ao iniciar {processName}: {ex.Message}");
-                }
+                catch { }
             }
-            else
-            {
-                LogMessage($"{processName} já está em execução.");
-            }
+
+            System.Threading.Thread.Sleep(2000);
+
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = path;
+            psi.WorkingDirectory = Path.GetDirectoryName(path);
+            psi.UseShellExecute = true;
+
+            Process.Start(psi);
+
+            Log($"{processName} reiniciado");
         }
 
-        // ===============================
-        // REINÍCIO PROGRAMADO
-        // ===============================
-        private void RestartAllExecutables()
+        private void RestartAll()
         {
-            string basePath = Application.StartupPath;
-
-            RestartExecutable("IntegradorCreditos",
-                System.IO.Path.Combine(basePath, "IntegradorCreditos.lnk"));
-
-            RestartExecutable("IntegradorRM",
-                System.IO.Path.Combine(basePath, "IntegradorRM.lnk"));
-
-            RestartExecutable("ApiLocalSeculos",
-                System.IO.Path.Combine(basePath, "Api Local Seculos.exe"));
+            RestartExe(txtExe1.Text);
+            RestartExe(txtExe2.Text);
+            RestartExe(txtExe3.Text);
         }
 
-        private void RestartExecutable(string processName, string fullPath)
+        // =============================
+        // LOG
+        // =============================
+
+        private void Log(string msg)
         {
-            try
-            {
-                var processes = Process.GetProcessesByName(processName);
-
-                foreach (var process in processes)
-                {
-                    try
-                    {
-                        process.CloseMainWindow();
-
-                        if (!process.WaitForExit(5000))
-                            process.Kill();
-
-                        LogMessage($"{processName} finalizado com sucesso.");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage($"Erro ao finalizar {processName}: {ex.Message}");
-                    }
-                }
-
-                System.Threading.Thread.Sleep(2000);
-
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = fullPath,
-                    UseShellExecute = true
-                });
-                LogMessage($"{processName} reiniciado com sucesso.");
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"Erro ao reiniciar {processName}: {ex.Message}");
-            }
+            lstlog.Items.Add(
+                $"[{DateTime.Now:HH:mm:ss}] {msg}"
+            );
         }
 
-        private void LogMessage(string message)
+        // =============================
+        // BOTÃO INICIAR MANUAL
+        // =============================
+
+        private void btnStart_Click(object sender, EventArgs e)
         {
-            lstlog.Items.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
+            CheckAll();
         }
-        private void lstlog_SelectedIndexChanged(object sender, EventArgs e)
+
+        private void btnRestart_Click(object sender, EventArgs e)
         {
+            RestartAll();
         }
     }
 }
